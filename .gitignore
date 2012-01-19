@@ -8,6 +8,9 @@
 *.pidb
 *.sdf
 *.userprefs
+*.trx
+*.dat
+*.exe
 .DS_Store
 deploy/
 build/
