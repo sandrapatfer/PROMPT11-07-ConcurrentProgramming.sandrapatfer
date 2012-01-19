@@ -46,6 +46,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ActiveWorkItemCounter.cs" />
     <Compile Include="FileFinderForm.cs">
       <SubType>Form</SubType>
     </Compile>
