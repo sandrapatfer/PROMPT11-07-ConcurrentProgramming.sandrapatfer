@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows.Forms;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace FileFinder
 {
@@ -139,7 +140,7 @@ namespace FileFinder
                 }
             });*/
 
-            _count = 0;
+/*            _count = 0;
             var itemsCounter = new ActiveWorkItemCounter(new Action(() =>
                                         {
                                             this.BeginInvoke(new Action(() =>
@@ -178,7 +179,62 @@ namespace FileFinder
                     }
                 }
                 itemsCounter.Decrement();
-            });
+            });*/
+
+            int nFiles = 0;
+            //var sch = TaskScheduler.FromCurrentSynchronizationContext();
+            var ctx = SynchronizationContext.Current;
+            Task mainTask = null;
+            mainTask = new Task(() =>
+                {
+//                    Parallel.ForEach(Directory.EnumerateDirectories(fldr, "*", SearchOption.AllDirectories),
+//                        (dir) =>
+//                    foreach (var dir in Directory.EnumerateDirectories(fldr, "*", SearchOption.AllDirectories))
+//                    {
+//                        if (!_canceled)
+//                        {
+                    Parallel.ForEach(Directory.EnumerateFiles(fldr, patt, SearchOption.AllDirectories),
+                        /*new ParallelOptions() { MaxDegreeOfParallelism = 16 * Environment.ProcessorCount },*/
+                        () => 0,
+                        (fname, s, curr) =>
+                        {
+                            if (!_canceled)
+                            {
+                                string content = File.ReadAllText(fname);
+                                if (content.Contains(word))
+                                {
+                                    ctx.Post((o) =>
+                                    {
+                                        txtResults.AddLine(fname);
+                                    }, null);
+                                    //Interlocked.Increment(ref nFiles);
+                                    return ++curr;
+                                }
+                                else
+                                {
+                                    return curr;
+                                }
+                            }
+                            else
+                            {
+                                return curr;
+                            }
+                        },
+                        (curr) => { Interlocked.Add(ref nFiles, curr); });
+//                        }
+                        //                        });
+//                    }
+                });
+            mainTask.ContinueWith((t) =>
+                    {
+                        ctx.Post((o) =>
+                            {
+                                txtResults.AddLine(string.Format("Number of files: {0}", nFiles));
+                                btnCancel.Enabled = false;
+                                btnSearch.Enabled = true;
+                            }, null);
+                    }/*, sch*/);
+            mainTask.Start();
         }
 
         private void btnFolder_Click(object sender, EventArgs e)
@@ -199,22 +255,20 @@ namespace FileFinder
             btnSearch.Enabled = true;
             MessageBox.Show(string.Format("Processed {0} files", _count));
         }
-
-        private void FileFinderForm_Load(object sender, EventArgs e)
-        {
-
-        }
     }
 
     static class TextBoxExtensions
     {
         public static TextBox AddLine(this TextBox textBox, String text)
         {
-            textBox.BeginInvoke(new Action(() =>
+/*            textBox.BeginInvoke(new Action(() =>
                 {
                     textBox.AppendText(text);
                     textBox.AppendText("\r\n");
                 }));
+ */
+            textBox.AppendText(text);
+            textBox.AppendText("\r\n");
             return textBox;
         }
     }

@@ -155,8 +155,7 @@
             this.Controls.Add(this.txtPattern);
             this.Controls.Add(this.lblPattern);
             this.Name = "FileFinderForm";
-            this.Text = "File Finder";
-            this.Load += new System.EventHandler(this.FileFinderForm_Load);
+            this.Text = "File Finder TPL";
             this.ResumeLayout(false);
             this.PerformLayout();
 

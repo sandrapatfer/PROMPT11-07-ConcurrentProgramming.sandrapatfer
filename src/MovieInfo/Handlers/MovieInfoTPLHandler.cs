@@ -8,8 +8,9 @@ using System.Threading;
 namespace MovieInfo
 {
     using Models;
+    using System.Threading.Tasks;
 
-    public class MovieInfoAsyncHandler : IHttpAsyncHandler
+    public class MovieInfoTPLHandler : IHttpAsyncHandler
     {
         private const int MAX_RETRIES = 8;
         private const string BING_KEY = "0C358B2E021F09EBDC6E69DCBB24FC5532A3EC8B";
@@ -29,74 +30,8 @@ namespace MovieInfo
             for (int i = 0; i < 85; ++i) response.Write("&nbsp;");
         }
 
-/*        public void ProcessRequest(HttpContext context)
-        {
-/*            if (context.Request.Path != "/")
-            {
-                ReplyError(HttpStatusCode.NotFound, "Resource does not exist", context.Response);
-                return;
-            }
-
-            if (context.Request.QueryString["t"] == null)
-            {
-                ReplyError(HttpStatusCode.BadRequest, "Requests must indicate a movie via parameter <b>t=<i>movie</i></b>", context.Response);
-                return;
-            }*/
-
-/*            string imdbRequestUri = null;
-            if (context.Request.QueryString["y"] == null) {
-                imdbRequestUri = String.Format("http://imdbapi.com/?t={0}", context.Request.QueryString["t"]);
-            } else {
-                imdbRequestUri = String.Format("http://imdbapi.com/?t={0}&y={1}", context.Request.QueryString["t"], context.Request.QueryString["y"]);
-            }
-
-            HttpWebRequest imdbRequest = (HttpWebRequest)WebRequest.Create(imdbRequestUri);
-            HttpWebResponse imdbResponse = (HttpWebResponse)imdbRequest.GetResponse();
-
-            if (imdbResponse.StatusCode == HttpStatusCode.OK) {
-                JavaScriptSerializer jsonMaster = new JavaScriptSerializer();
-                IMDbObj imdbObj = jsonMaster.Deserialize<IMDbObj>(new StreamReader(imdbResponse.GetResponseStream()).ReadToEnd());
-                if (imdbObj != null && imdbObj.Response == "True") {
-                    if (imdbObj.Plot != "N/A")
-                    {
-                        string bingRequestUri = String.Format("http://api.bing.net/json.aspx?AppId={0}&Query={1}&Sources=Translation&Version=2.2&Translation.SourceLanguage={2}&Translation.TargetLanguage={3}", BING_KEY, imdbObj.Plot, "en", "pt");
-
-                        for (int retries = 0; retries < MAX_RETRIES; ++retries) {
-
-                            HttpWebRequest bingRequest = (HttpWebRequest)WebRequest.Create(bingRequestUri);
-                            HttpWebResponse bingResponse = (HttpWebResponse)bingRequest.GetResponse();
-
-                            if (bingResponse.StatusCode == HttpStatusCode.OK)
-                            {
-                                BingObj bingObj = jsonMaster.Deserialize<BingObj>(new StreamReader(bingResponse.GetResponseStream()).ReadToEnd());
-                                if (bingObj.SearchResponse.Translation != null)
-                                {
-                                    imdbObj.Plot = bingObj.SearchResponse.Translation.Results[0].TranslatedTerm;
-                                    break;
-                                }
-                            }
-
-                            Thread.Sleep(1000 + 1000 * retries + _rand.Next(2000));
-                        }
-                    }
-                    context.Response.StatusCode = (int)HttpStatusCode.OK;
-                    context.Response.ContentType = "text/plain; charset=utf-8"; // In the final version use "application/json; charset=utf-8"
-                    string jsonData = jsonMaster.Serialize(imdbObj);
-                    var writer = new StreamWriter(context.Response.OutputStream);
-                    writer.Write(jsonData);
-                    writer.Flush();
-                    return;
-                }
-            }
-
-            ReplyError(HttpStatusCode.NotFound, "Movie not found", context.Response);
-        }*/
-
         public class AsyncResult<T> : IAsyncResult
         {
-            //public T TResult { get; set; }
-            //public Exception ExceptionOut { get; set; }
-
             #region IAsyncResult Members
 
             public object AsyncState
@@ -170,13 +105,15 @@ namespace MovieInfo
             HttpWebRequest imdbRequest = (HttpWebRequest)WebRequest.Create(imdbRequestUri);
             //return _imdbRequest.BeginGetResponse(cb, extraData);
 
-           var result = new AsyncResult<HttpWebResponse>()
+            var result = new AsyncResult<HttpWebResponse>()
             {
                 AsyncState = extraData,
                 IsCompleted = false,
                 AsyncWaitHandle = new ManualResetEvent(false),
                 Callback = cb
             };
+
+            var t1 = Task.Factory.FromAsync(imdbRequest.BeginGetResponse, (Func<IAsyncResult,WebResponse>)imdbRequest.EndGetResponse, null);
 
             imdbRequest.BeginGetResponse((ar) =>
             {
