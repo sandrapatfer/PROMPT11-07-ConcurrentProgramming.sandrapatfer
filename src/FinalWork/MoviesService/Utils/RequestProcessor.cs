@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Web.Script.Serialization;
 using System.IO;
 using System.Collections;
+using Utils;
 
 namespace MoviesService.Utils
 {
@@ -225,6 +226,10 @@ namespace MoviesService.Utils
                     }
                 }
             }
+
+            var tcsResult = new TaskCompletionSource<MovieInfo>();
+            tcsResult.SetResult(info);
+            yield return tcsResult.Task;
         }
 
         private Task CreateBingTask(IMDbObj imdbObj, MovieInfo info, string l)
@@ -233,12 +238,12 @@ namespace MoviesService.Utils
             {
                 return ProcessBingIterator(imdbObj.Plot, l).Run<string>().ContinueWith(task =>
                 {
-                    info.Description = task.Result;
+                    info.Plot = task.Result;
                 });
             }
             else
             {
-                info.Description = imdbObj.Plot;
+                info.Plot = imdbObj.Plot;
                 var tcs = new TaskCompletionSource<MovieInfo>();
                 tcs.SetResult(null);
                 return tcs.Task;

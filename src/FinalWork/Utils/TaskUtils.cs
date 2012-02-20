@@ -5,7 +5,7 @@ using System.Web;
 using System.Threading.Tasks;
 using System.Threading;
 
-namespace MoviesService.Utils
+namespace Utils
 {
     public static class TaskUtils
     {
@@ -26,16 +26,17 @@ namespace MoviesService.Utils
 
         public static void SetFromTask<TResult>(this TaskCompletionSource<TResult> tcs, Task task)
         {
-            Task<TResult> task_t = null;
-
             if (tcs == null) throw new ArgumentNullException("tcs");
 
-            if (task == null || (task_t = task as Task<TResult>) == null)
+            if (task == null || task as Task<TResult> == null)
             {
-                var tcs2 = new TaskCompletionSource<TResult>();
-                tcs2.SetResult(default(TResult));
-                task_t = tcs2.Task;
+                var res_tcs = new TaskCompletionSource<TResult>();
+                res_tcs.SetResult(default(TResult));
+                task = res_tcs.Task;
             }
+            if (task == null) throw new ArgumentNullException("task");
+
+            Task<TResult> task_t = task as Task<TResult>;
             tcs.SetFromTask<TResult>(task_t);
         }
 
