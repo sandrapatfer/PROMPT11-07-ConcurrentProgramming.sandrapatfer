@@ -21,97 +21,7 @@ namespace MoviesService.Utils
         private const string _nyTimesKey = "e13917dc15002cbb0c90046b8c2edb42:5:65635886";
         private const string _bingKey = "0C358B2E021F09EBDC6E69DCBB24FC5532A3EC8B";
 
-        private static RequestProcessor _singleton;
-        public static RequestProcessor Singleton
-        {
-            get
-            {
-                if (_singleton == null)
-                {
-                    _singleton = new RequestProcessor();
-                }
-                return _singleton;
-            }
-        }
-
-        private class RequestKey : IEqualityComparer<RequestKey>
-        {
-            public string Url { get; set; }
-            public string Language { get; set; }
-
-            public bool Equals(object x, object y)
-            {
-                if (x == null)
-                {
-                    return y == null;
-                }
-                if (y == null)
-                {
-                    return false;
-                }
-                var key1 = x as RequestKey;
-                var key2 = y as RequestKey;
-                return key1.Url == key2.Url && key1.Language == key2.Language;
-            }
-
-            public int GetHashCode(object obj)
-            {
-                return 0;
-            }
-
-            public bool Equals(RequestKey x, RequestKey y)
-            {
-                if (x == null)
-                {
-                    return y == null;
-                }
-                if (y == null)
-                {
-                    return false;
-                }
-                return x.Url == y.Url && x.Language == y.Language;
-            }
-
-            public int GetHashCode(RequestKey obj)
-            {
-                return 0;
-            }
-        }
-
-        private AsyncCache<RequestKey, MovieInfo> _cache;
-
-        public RequestProcessor()
-        {
-            _cache = new AsyncCache<RequestKey, MovieInfo>((key) =>
-            {
-                return CreateMainProcessRequestIterator(key.Url, key.Language).Run<MovieInfo>();
-            }, new RequestKey());
-        }
-
-        public Task<MovieInfo> GetRequest(string t, string y, string l)
-        {
-            if (string.IsNullOrEmpty(t))
-            {
-                var tcs1 = new TaskCompletionSource<MovieInfo>();
-                tcs1.SetResult(null);
-                return tcs1.Task;
-            }
-
-            string imdbUrl;
-            if (string.IsNullOrEmpty(y))
-            {
-                imdbUrl = string.Format("http://imdbapi.com/?t={0}&plot=full", t);
-            }
-            else
-            {
-                imdbUrl = string.Format("http://imdbapi.com/?t={0}&y={1}&plot=full", t, y);
-            }
-
-            var key = new RequestKey() { Url = imdbUrl, Language = l };
-            return _cache.Get(key);
-        }
-
-        private IEnumerator<Task> CreateMainProcessRequestIterator(string imdbUrl, string l)
+        public static IEnumerator<Task> CreateMovieRequestIterator(string imdbUrl)
         {
             var httpClient = new HttpClient();
             var imdbTask = httpClient.GetAsync(imdbUrl);
@@ -136,13 +46,13 @@ namespace MoviesService.Utils
                 Title = imdbObj.Title,
                 Year = imdbObj.Year,
                 Director = imdbObj.Director,
-                CoverUrl = imdbObj.Poster
+                CoverUrl = imdbObj.Poster,
+                Plot = imdbObj.Plot
             };
 
             var taskWhenAll = TaskUtils.WhenAll(
                 CreateFlickrTask(imdbObj, info),
-                CreateNYTimesTask(imdbObj, info, l),
-                CreateBingTask(imdbObj, info, l)
+                CreateNYTimesTask(imdbObj, info)
             );
             yield return taskWhenAll;
 
@@ -151,13 +61,65 @@ namespace MoviesService.Utils
             yield return tcs3.Task;
         }
 
-        private Task CreateFlickrTask(IMDbObj imdbObj, MovieInfo info)
+        public static IEnumerator<Task> CreateTranslatorRequestIterator(string language, MovieInfo movieInfo)
         {
+            if (string.IsNullOrEmpty(language))
+            {
+                var tcs = new TaskCompletionSource<MovieInfo>();
+                tcs.SetResult(movieInfo);
+                yield return tcs.Task;
+                yield break;
+            }
+            else
+            {
+                var tasks = new List<Task>();
+                if (!string.IsNullOrEmpty(movieInfo.Plot))
+                {
+                    tasks.Add(
+                        ProcessBingIterator(movieInfo.Plot, language).Run<string>().ContinueWith(task1 =>
+                        {
+                            movieInfo.Plot = task1.Result;
+                        }));
+                }
+                if (movieInfo.NYTimesReviews != null)
+                {
+                    foreach (var review in movieInfo.NYTimesReviews)
+                    {
+                        if (!string.IsNullOrEmpty(review.Summary))
+                        {
+                            tasks.Add(ProcessBingIterator(review.Summary, language).Run<string>().ContinueWith(task =>
+                            {
+                                review.Summary = task.Result;
+                            }));
+                        }
+
+                        if (!string.IsNullOrEmpty(review.Review))
+                        {
+                            tasks.Add(ProcessBingIterator(review.Review, language).Run<string>().ContinueWith(task =>
+                            {
+                                review.Review = task.Result;
+                            }));
+                        }
+                    }
+                }
+                var taskWhenAll = TaskUtils.WhenAll(tasks.ToArray());
+                yield return taskWhenAll;
+
+                var tcs3 = new TaskCompletionSource<MovieInfo>();
+                tcs3.SetResult(movieInfo);
+                yield return tcs3.Task;
+            }
+
+        }
+        
+        private static Task CreateFlickrTask(IMDbObj imdbObj, MovieInfo info)
+        {
+            var tcs = new TaskCompletionSource<MovieInfo>();
             var httpClient = new HttpClient();
             var flickrUrl = string.Format("http://api.flickr.com/services/rest/?method=flickr.photos.search&api_key={0}&format=json&nojsoncallback=1&text={1}+{2}&sort=interestingness-desc",
                 _flickrKey, imdbObj.Title, imdbObj.Director);
             var taskFlickr = httpClient.GetAsync(flickrUrl);
-            return taskFlickr.ContinueWith(t =>
+            taskFlickr.ContinueWith(t =>
             {
                 if (t.Result.IsSuccessStatusCode)
                 {
@@ -169,88 +131,52 @@ namespace MoviesService.Utils
                         info.FlickrPhotos = flickrInfo.Photos.Photo.Select(p =>
                             string.Format("http://farm{0}.static.flickr.com/{1}/{2}_{3}.jpg",
                             p.Farm, p.Server, p.Id, p.Secret)).ToList();
+                        tcs.SetResult(info);
                     });
                 }
             });
+            return tcs.Task;
         }
-        private Task CreateNYTimesTask(IMDbObj imdbObj, MovieInfo info, string l)
+        private static Task CreateNYTimesTask(IMDbObj imdbObj, MovieInfo info)
         {
-            return ProcessNYTimesIterator(imdbObj, info, l).Run();
-        }
-
-        private IEnumerator<Task> ProcessNYTimesIterator(IMDbObj imdbObj, MovieInfo info, string l)
-        {
+            var tcs = new TaskCompletionSource<MovieInfo>();
             var year = Convert.ToInt32(imdbObj.Year);
             var nyTimesUrl = string.Format("http://api.nytimes.com/svc/movies/v2/reviews/search.json?query={0}&api-key={1}&opening-date={2}-01-01;{3}-12-31",
                 imdbObj.Title, _nyTimesKey, year, year + 1);
             var httpClient = new HttpClient();
 
             var requestTask = httpClient.GetAsync(nyTimesUrl);
-            yield return requestTask;
-
-            if (requestTask.Result.IsSuccessStatusCode)
+            requestTask.ContinueWith(t1 =>
             {
-                var taskReadObject = requestTask.Result.Content.ReadAsStreamAsync();
-                yield return taskReadObject;
-
-                JavaScriptSerializer jsonMaster = new JavaScriptSerializer();
-                var nyTimesObj = jsonMaster.Deserialize<NYTimesObj>(new StreamReader(taskReadObject.Result).ReadToEnd());
-                if (nyTimesObj.num_results > 0)
+                if (t1.Result.IsSuccessStatusCode)
                 {
-                    // should the translations be parallel? the bing service wouldn't support it...
-
-                    info.NYTimesReviews = new List<MovieReview>();
-                    foreach (var critic in nyTimesObj.results)
+                    var taskReadObject = requestTask.Result.Content.ReadAsStreamAsync();
+                    taskReadObject.ContinueWith(t2 =>
                     {
-                        string summary = "";
-                        if (!string.IsNullOrEmpty(critic.summary_short))
+                        JavaScriptSerializer jsonMaster = new JavaScriptSerializer();
+                        var nyTimesObj = jsonMaster.Deserialize<NYTimesObj>(new StreamReader(t2.Result).ReadToEnd());
+                        if (nyTimesObj.num_results > 0)
                         {
-                            var taskBing = ProcessBingIterator(critic.summary_short, l).Run<string>();
-                            yield return taskBing;
-                            summary = taskBing.Result;
+                            info.NYTimesReviews = new List<MovieReview>();
+                            foreach (var critic in nyTimesObj.results)
+                            {
+                                info.NYTimesReviews.Add(new MovieReview()
+                                {
+                                    Reviewer = critic.byline,
+                                    Summary = critic.summary_short,
+                                    Review = critic.capsule_review,
+                                    Url = critic.link.url
+                                });
+                            }
+                            tcs.SetResult(info);
                         }
-                        string review = "";
-                        if (!string.IsNullOrEmpty(critic.capsule_review))
-                        {
-                            var taskBing = ProcessBingIterator(critic.capsule_review, l).Run<string>();
-                            yield return taskBing;
-                            review = taskBing.Result;
-                        }
-                        info.NYTimesReviews.Add(new MovieReview()
-                        {
-                            Reviewer = critic.byline,
-                            Summary = summary,
-                            Review = review,
-                            Url = critic.link.url
-                        });
-                    }
+                    });
                 }
-            }
-
-            var tcsResult = new TaskCompletionSource<MovieInfo>();
-            tcsResult.SetResult(info);
-            yield return tcsResult.Task;
+            });
+            return tcs.Task;
         }
 
-        private Task CreateBingTask(IMDbObj imdbObj, MovieInfo info, string l)
-        {
-            if (!string.IsNullOrEmpty(l))
-            {
-                return ProcessBingIterator(imdbObj.Plot, l).Run<string>().ContinueWith(task =>
-                {
-                    info.Plot = task.Result;
-                });
-            }
-            else
-            {
-                info.Plot = imdbObj.Plot;
-                var tcs = new TaskCompletionSource<MovieInfo>();
-                tcs.SetResult(null);
-                return tcs.Task;
-            }
-        }
-
-        private IEnumerator<Task> ProcessBingIterator(string textToTranslate, string l)
+        private static IEnumerator<Task> ProcessBingIterator(string textToTranslate, string l)
         {
             if (!string.IsNullOrEmpty(l))
             {

@@ -12,6 +12,12 @@ namespace MoviesService.Utils
         private Func<TKey, Task<TValue>> _valueFactory;
         private ConcurrentDictionary<TKey, Lazy<Task<TValue>>> _dictionary;
 
+        public AsyncCache(Func<TKey, Task<TValue>> valueFactory)
+        {
+            _valueFactory = valueFactory;
+            _dictionary = new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>();
+        }
+
         public AsyncCache(Func<TKey, Task<TValue>> valueFactory, IEqualityComparer<TKey> comparer)
         {
             _valueFactory = valueFactory;

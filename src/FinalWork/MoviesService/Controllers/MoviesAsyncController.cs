@@ -17,7 +17,7 @@ namespace MoviesService.Controllers
         {
             AsyncManager.OutstandingOperations.Increment();
 
-            RequestProcessor.Singleton.GetRequest(t, y, l).ContinueWith(task =>
+            CacheController.Singleton.GetRequest(t, y, l).ContinueWith(task =>
             {
                 AsyncManager.Parameters["result"] = task.Result;
                 AsyncManager.OutstandingOperations.Decrement();

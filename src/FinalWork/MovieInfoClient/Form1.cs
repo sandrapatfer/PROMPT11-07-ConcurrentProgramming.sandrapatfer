@@ -117,6 +117,12 @@ namespace MoviesInfo
                     ActivateSearch(guiCtx);
                     return;
                 }
+                if (!t.Result.IsSuccessStatusCode)
+                {
+                    ActivateSearch(guiCtx);
+                    MessageBox.Show("Error in request");
+                    return;
+                }
 
                 var content = t.Result.Content;
                 var readTask = content.ReadAsAsync<JsonValue>();

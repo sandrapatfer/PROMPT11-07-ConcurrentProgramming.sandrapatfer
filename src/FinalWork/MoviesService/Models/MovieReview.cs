@@ -11,5 +11,15 @@ namespace MoviesService.Models
         public string Review { get; set; }
         public string Summary { get; set; }
         public string Url { get; set; }
+
+        public MovieReview() { }
+
+        public MovieReview(MovieReview other)
+        {
+            this.Reviewer = other.Reviewer;
+            this.Review = other.Review;
+            this.Summary = other.Summary;
+            this.Url = other.Url;
+        }
     }
 }

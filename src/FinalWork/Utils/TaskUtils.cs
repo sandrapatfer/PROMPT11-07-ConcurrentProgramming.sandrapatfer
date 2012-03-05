@@ -87,10 +87,10 @@ namespace Utils
 
         public static Task NewDelayTask(int time)
         {
-            var cts = new TaskCompletionSource<object>();
-            new Timer((o) =>
+            var cts = new TaskCompletionSource<bool>();
+            new Timer((_) =>
             {
-                cts.SetResult(null);
+                cts.SetResult(true);
             }, null, time, Timeout.Infinite);
             return cts.Task;
         }
