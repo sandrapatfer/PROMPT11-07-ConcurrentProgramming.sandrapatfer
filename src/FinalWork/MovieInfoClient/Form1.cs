@@ -16,8 +16,7 @@ namespace MoviesInfo
 	{
 		// Change URL service according to your configuration
         private const string MashupServiceEndpoint = "http://localhost:49822/MoviesAsync";
-        private CancellationTokenSource _cancelToken;
-        private bool _canceled;
+        private CancellationTokenSource _lastRequestCancelToken;
 	
 		private static string PrepareServiceUrl(string movie, int year, string lang)
 		{
@@ -82,18 +81,24 @@ namespace MoviesInfo
 			}
 			ClearInput();
 			searchButton.Enabled = false;
-            _canceled = false;
 			GetMovieInfo(movieIn.Text, year, langIn.Text);
 		}
 
-        Task<Image> TaskLoadingImageFromUrl(string location)
+        Task<Image> TaskLoadingImageFromUrl(string location, CancellationTokenSource cancelToken)
         {
             var httpClient = new HttpClient();
             var streamTask = httpClient.GetStreamAsync(location);
             var cts = new TaskCompletionSource<Image>();
             streamTask.ContinueWith(t =>
             {
-                cts.SetResult(Image.FromStream(streamTask.Result));
+                if (cancelToken.IsCancellationRequested)
+                {
+                    cts.SetCanceled();
+                }
+                else
+                {
+                    cts.SetResult(Image.FromStream(streamTask.Result));
+                }
             });
             return cts.Task;
         }
@@ -107,8 +112,10 @@ namespace MoviesInfo
 
             var url = PrepareServiceUrl(title, year, lang);
             var httpClient = new HttpClient();
-            _cancelToken = new CancellationTokenSource();
-            var contentTask = httpClient.GetAsync(url, _cancelToken.Token);
+            CancellationTokenSource cancelToken = new CancellationTokenSource();
+            _lastRequestCancelToken = cancelToken;
+
+            var contentTask = httpClient.GetAsync(url, cancelToken.Token);
 
             contentTask.ContinueWith(t =>
             {
@@ -129,7 +136,7 @@ namespace MoviesInfo
 
                 readTask.ContinueWith(t2 =>
                 {
-                    if (_canceled)
+                    if (cancelToken.IsCancellationRequested)
                     {
                         ActivateSearch(guiCtx);
                         return;
@@ -153,7 +160,7 @@ namespace MoviesInfo
                         }
                     }, null);
 
-                    if (_canceled)
+                    if (cancelToken.IsCancellationRequested)
                     {
                         ActivateSearch(guiCtx);
                         return;
@@ -162,11 +169,11 @@ namespace MoviesInfo
                     List<Task> pendingTasks = new List<Task>();
 
                     // Get Poster
-                    var taskPosterImage = TaskLoadingImageFromUrl((string)json.CoverUrl);
+                    var taskPosterImage = TaskLoadingImageFromUrl((string)json.CoverUrl, cancelToken);
                     pendingTasks.Add(taskPosterImage);
                     taskPosterImage.ContinueWith(t3 =>
                     {
-                        if (_canceled)
+                        if (cancelToken.IsCancellationRequested)
                         {
                             ActivateSearch(guiCtx);
                             return;
@@ -184,16 +191,16 @@ namespace MoviesInfo
                         JsonArray photos = json.FlickrPhotos;
                         foreach (dynamic photo in photos)
                         {
-                            if (_canceled)
+                            if (cancelToken.IsCancellationRequested)
                             {
                                 ActivateSearch(guiCtx);
                                 return;
                             }
-                            var taskPhoto = TaskLoadingImageFromUrl((string)photo);
+                            var taskPhoto = TaskLoadingImageFromUrl((string)photo, cancelToken);
                             pendingTasks.Add(taskPhoto);
                             taskPhoto.ContinueWith(t4 =>
                             {
-                                if (_canceled)
+                                if (cancelToken.IsCancellationRequested)
                                 {
                                     ActivateSearch(guiCtx);
                                     return;
@@ -236,14 +243,14 @@ namespace MoviesInfo
 
         private void cancelButton_Click(object sender, EventArgs e)
         {
-            if (_cancelToken != null)
+            if (_lastRequestCancelToken != null)
             {
-                if (!_cancelToken.IsCancellationRequested)
+                if (!_lastRequestCancelToken.IsCancellationRequested)
                 {
-                    _cancelToken.Cancel();
+                    _lastRequestCancelToken.Cancel();
                 }
             }
-            _canceled = true;
+            //_canceled = true;
         }
 	}
 }
